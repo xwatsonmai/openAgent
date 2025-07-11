@@ -12,6 +12,10 @@ type IPrompter[I any] interface {
 	AnswerToInstructions(ctx context.Context, agentAnswer string) ([]instruction.Instruction, error) // 根据Agent的回答解析出指令
 }
 
+type IPromptInitializer[I any] interface {
+	Initialize(ctx context.Context, input I) (aiChatList aimodel.ChatList, err error) // 初始化Prompt配置
+}
+
 type IEntity interface {
 	Execute(ctx context.Context, round int, ins instruction.Instruction) ([]aimodel.UserContent, error) // 执行指令
 	RoundUserPrompt(ctx context.Context, round int) ([]aimodel.UserContent, error)                      // 获取轮次用户提示

@@ -29,30 +29,42 @@ func New[I any](prompter define.IPrompter[I], entity define.IEntity, ai aimodel.
 }
 
 func (a *Agent[I]) Do(ctx context.Context, input I) error {
-	systemPrompt, err := a.prompter.SystemPrompt(ctx)
-	if err != nil {
-		return err
+	// 检查看prompter是否实现了IPromptInitializer接口，如果实现了，说明上层业务需要自行初始化与Agent的对话消息
+	if initializer, ok := a.prompter.(define.IPromptInitializer[I]); ok {
+		// 框架只依赖IPromptInitializer接口，具体的实现由上层业务提供
+		aiChatList, err := initializer.Initialize(ctx, input)
+		if err != nil {
+			return err
+		}
+		a.aiChatList = aiChatList
+	} else {
+		// 没有实现，则使用默认的初始化方式
+		systemPrompt, err := a.prompter.SystemPrompt(ctx)
+		if err != nil {
+			return err
+		}
+		startUserPrompt, err := a.prompter.StartUserPrompt(ctx, input)
+		if err != nil {
+			return err
+		}
+		startRoundUserPrompt, err := a.entity.RoundUserPrompt(ctx, a.round)
+		if err != nil {
+			return err
+		}
+		// 把startUserPrompt和startRoundUserPrompt合并
+		allUserPrompt := append(startUserPrompt, startRoundUserPrompt...)
+		a.aiChatList = aimodel.ChatList{
+			{
+				Role:    aimodel.EAIChatRoleSystem,
+				Content: systemPrompt,
+			},
+			{
+				Role:    aimodel.EAIChatRoleUser,
+				Content: allUserPrompt,
+			},
+		}
 	}
-	startUserPrompt, err := a.prompter.StartUserPrompt(ctx, input)
-	if err != nil {
-		return err
-	}
-	startRoundUserPrompt, err := a.entity.RoundUserPrompt(ctx, a.round)
-	if err != nil {
-		return err
-	}
-	// 把startUserPrompt和startRoundUserPrompt合并
-	allUserPrompt := append(startUserPrompt, startRoundUserPrompt...)
-	a.aiChatList = aimodel.ChatList{
-		{
-			Role:    aimodel.EAIChatRoleSystem,
-			Content: systemPrompt,
-		},
-		{
-			Role:    aimodel.EAIChatRoleUser,
-			Content: allUserPrompt,
-		},
-	}
+
 	for {
 		a.round++
 		// 暂时只支持非流式对话
@@ -84,11 +96,14 @@ func (a *Agent[I]) Do(ctx context.Context, input I) error {
 
 		}
 		roundUserPrompt, err := a.entity.RoundUserPrompt(ctx, a.round)
+		if err != nil && errors.Is(err, agentError.End) {
+			return agentError.End
+		}
 		if err != nil {
 			return err
 		}
 		// 把thisRoundUserPrompt和roundUserPrompt合并
-		allUserPrompt = append(thisRoundUserPrompt, roundUserPrompt...)
+		allUserPrompt := append(thisRoundUserPrompt, roundUserPrompt...)
 		a.aiChatList = append(a.aiChatList, aimodel.Chat{
 			Role:    aimodel.EAIChatRoleUser,
 			Content: allUserPrompt,
