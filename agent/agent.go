@@ -18,6 +18,16 @@ type Agent[I any] struct {
 	aiChatList   aimodel.ChatList
 }
 
+func New[I any](prompter define.IPrompter[I], entity define.IEntity, ai aimodel.IAiModel) *Agent[I] {
+	return &Agent[I]{
+		prompter:   prompter,
+		entity:     entity,
+		ai:         ai,
+		round:      0,
+		aiChatList: aimodel.ChatList{},
+	}
+}
+
 func (a *Agent[I]) Do(ctx context.Context, input I) error {
 	systemPrompt, err := a.prompter.SystemPrompt(ctx)
 	if err != nil {
